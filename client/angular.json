@@ -15,16 +15,24 @@
             "outputPath": "dist/scrum-poker-client",
             "index": "src/index.html",
             "browser": "src/main.ts",
-            "polyfills": ["zone.js"],
+            "polyfills": [
+              "zone.js"
+            ],
             "tsConfig": "tsconfig.app.json",
             "assets": [],
-            "styles": ["src/styles.css"],
+            "styles": [
+              "src/styles.css"
+            ],
             "scripts": []
           },
           "configurations": {
             "production": {
               "budgets": [
-                { "type": "initial", "maximumWarning": "600kb", "maximumError": "1mb" }
+                {
+                  "type": "initial",
+                  "maximumWarning": "600kb",
+                  "maximumError": "1mb"
+                }
               ],
               "outputHashing": "all"
             },
@@ -39,15 +47,31 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
-            "production": { "buildTarget": "scrum-poker-client:build:production" },
-            "development": { "buildTarget": "scrum-poker-client:build:development" }
+            "production": {
+              "buildTarget": "scrum-poker-client:build:production"
+            },
+            "development": {
+              "buildTarget": "scrum-poker-client:build:development"
+            }
           },
           "defaultConfiguration": "development"
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": [
+              "src/**/*.ts",
+              "src/**/*.html"
+            ]
+          }
         }
       }
     }
   },
   "cli": {
-    "analytics": "005a823c-b74b-4d1f-8188-b3157d02a633"
+    "analytics": "005a823c-b74b-4d1f-8188-b3157d02a633",
+    "schematicCollections": [
+      "@angular-eslint/schematics"
+    ]
   }
 }

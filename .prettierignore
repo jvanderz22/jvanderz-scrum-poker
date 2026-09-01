@@ -1,0 +1,6 @@
+node_modules/
+client/dist/
+client/.angular/
+client/out-tsc/
+**/package-lock.json
+**/*.min.js

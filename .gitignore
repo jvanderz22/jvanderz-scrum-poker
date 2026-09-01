@@ -36,3 +36,6 @@ Thumbs.db
 # Misc
 *.tsbuildinfo
 .npm/
+.nx/cache
+.nx/workspace-data
+.eslintcache
