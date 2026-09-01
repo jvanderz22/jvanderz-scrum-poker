@@ -49,6 +49,16 @@ export class RoomService {
     return sessionStorage.getItem(`poker:${roomId}`);
   }
 
+  async roomExists(roomId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/api/rooms/${roomId}`);
+      return res.ok;
+    } catch {
+      // Network error — assume it exists so a blip doesn't bounce people home.
+      return true;
+    }
+  }
+
   connect(roomId: string, name: string): void {
     if (this.socket) this.socket.disconnect();
     this.error.set(null);

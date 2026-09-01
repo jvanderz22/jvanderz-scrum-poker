@@ -1,6 +1,6 @@
-import { Component, computed, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { RoomService } from '../room.service';
 
 @Component({
@@ -37,7 +37,7 @@ import { RoomService } from '../room.service';
         </header>
 
         <section class="seats">
-          @for (p of state()?.participants ?? []; track p.id) {
+          @for (p of orderedParticipants(); track p.id) {
             <div class="seat" [class.me]="p.id === myClientId" [class.disconnected]="!p.connected">
               <div class="face" [class.flipped]="revealed()">
                 @if (revealed()) {
@@ -171,6 +171,21 @@ export class RoomComponent implements OnInit, OnDestroy {
   connected: RoomService['connected'];
   revealed = computed(() => this.state()?.revealed ?? false);
   anyEstimates = computed(() => (this.state()?.participants ?? []).some((p) => p.hasEstimate));
+  // Before reveal, keep join order. After reveal, sort by estimate (deck order, so
+  // numbers ascending then ? then ☕, with no-estimate last), breaking ties by name.
+  orderedParticipants = computed(() => {
+    const s = this.state();
+    const participants = s?.participants ?? [];
+    if (!s?.revealed) return participants;
+    const deck = s.deck ?? [];
+    const rank = (estimate: string | null) => {
+      const i = estimate == null ? -1 : deck.indexOf(estimate);
+      return i === -1 ? Number.POSITIVE_INFINITY : i;
+    };
+    return [...participants].sort(
+      (a, b) => rank(a.estimate) - rank(b.estimate) || a.name.localeCompare(b.name),
+    );
+  });
   myEstimate = computed(
     () => this.state()?.participants.find((p) => p.id === this.myClientId)?.estimate ?? null,
   );
@@ -178,13 +193,28 @@ export class RoomComponent implements OnInit, OnDestroy {
   needsName = signal(false);
   myClientId: string | null = null;
 
-  constructor(private route: ActivatedRoute, private rooms: RoomService) {
+  constructor(
+    private route: ActivatedRoute,
+    private router: Router,
+    private rooms: RoomService,
+  ) {
     this.state = this.rooms.state;
     this.connected = this.rooms.connected;
+
+    // If the server reports the room is gone (e.g. deleted mid-session), bail home.
+    effect(() => {
+      if (this.rooms.error() === 'Room not found') this.goHome();
+    });
   }
 
-  ngOnInit(): void {
+  async ngOnInit(): Promise<void> {
     this.roomId = this.route.snapshot.paramMap.get('id') || '';
+
+    if (!(await this.rooms.roomExists(this.roomId))) {
+      this.goHome();
+      return;
+    }
+
     this.myClientId = this.rooms.storedClientId(this.roomId);
 
     if (this.myClientId) {
@@ -192,6 +222,11 @@ export class RoomComponent implements OnInit, OnDestroy {
     } else {
       this.needsName.set(true);
     }
+  }
+
+  private goHome(): void {
+    this.rooms.disconnect();
+    this.router.navigate(['/']);
   }
 
   ngOnDestroy(): void {

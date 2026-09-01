@@ -11,7 +11,7 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:4200';
 const ROOM_TTL_MS = 60 * 24 * 60 * 60 * 1000; // ~2 months
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // sweep hourly
 
-const DECK = ['0', '1', '2', '3', '5', '8', '13', '21', '34', '55', '89', '?', '☕'];
+const DECK = ['0', '1', '2', '3', '5', '8', '13', '21', '34', '?', '☕'];
 
 /**
  * In-memory room store. Nothing here is persisted to disk — restarting the
@@ -33,7 +33,10 @@ function touch(room) {
   room.lastActivity = Date.now();
 }
 
-function publicRoomState(room) {
+// State as seen by one client. Other people's estimate values stay hidden until
+// the host reveals, but the requesting client always sees their own pick — the
+// server is still the only source of truth, it just trusts you with your vote.
+function roomStateFor(room, clientId) {
   return {
     id: room.id,
     name: room.name,
@@ -45,15 +48,23 @@ function publicRoomState(room) {
       name: p.name,
       connected: p.connected,
       hasEstimate: p.estimate !== null,
-      // Only send the actual value once revealed. This is the whole point of
-      // keeping state on the server rather than trusting the client.
-      estimate: room.revealed ? p.estimate : null,
+      estimate: room.revealed || p.id === clientId ? p.estimate : null,
     })),
   };
 }
 
+// Identity-free view for the REST endpoint, which has no client to key off.
+function publicRoomState(room) {
+  return roomStateFor(room, null);
+}
+
 function broadcastState(io, room) {
-  io.to(room.id).emit('room:state', publicRoomState(room));
+  const socketIds = io.sockets.adapter.rooms.get(room.id);
+  if (!socketIds) return;
+  for (const sid of socketIds) {
+    const sock = io.sockets.sockets.get(sid);
+    if (sock) sock.emit('room:state', roomStateFor(room, sock.data.clientId));
+  }
 }
 
 function cleanupStaleRooms() {
@@ -75,8 +86,13 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }))
 // Creating a room is a plain REST call so a shareable link exists immediately,
 // independent of any one socket connection.
 app.post('/api/rooms', (req, res) => {
-  const name = (req.body && req.body.name ? String(req.body.name) : 'Planning session').slice(0, 60);
-  const creatorName = (req.body && req.body.creatorName ? String(req.body.creatorName) : 'Host').slice(0, 40);
+  const name = (req.body && req.body.name ? String(req.body.name) : 'Planning session').slice(
+    0,
+    60,
+  );
+  const creatorName = (
+    req.body && req.body.creatorName ? String(req.body.creatorName) : 'Host'
+  ).slice(0, 40);
 
   const id = uuid().slice(0, 8);
   const creatorId = uuid();
@@ -87,7 +103,9 @@ app.post('/api/rooms', (req, res) => {
     revealed: false,
     createdAt: Date.now(),
     lastActivity: Date.now(),
-    participants: new Map([[creatorId, { id: creatorId, name: creatorName, estimate: null, connected: false }]]),
+    participants: new Map([
+      [creatorId, { id: creatorId, name: creatorName, estimate: null, connected: false }],
+    ]),
   };
   rooms.set(id, room);
 
@@ -122,7 +140,7 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     touch(room);
 
-    ack && ack({ ok: true, clientId: id, state: publicRoomState(room) });
+    ack && ack({ ok: true, clientId: id, state: roomStateFor(room, id) });
     broadcastState(io, room);
   });
 
