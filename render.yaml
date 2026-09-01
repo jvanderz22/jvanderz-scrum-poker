@@ -1,0 +1,26 @@
+# Render Blueprint — one free web service that builds the Angular client and
+# serves it from the Express + Socket.IO server (same origin, no CORS).
+#
+# Deploy: push to GitHub, then in the Render dashboard "New +" -> "Blueprint"
+# and point it at this repo. Render reads this file and creates the service.
+#
+# Free plan notes:
+#   - The service sleeps after ~15 min of no traffic; the next request wakes it
+#     (~30-60s cold start). Rooms are in-memory, so a sleep/restart clears them.
+#   - Static assets and the API share the one origin, so nothing else to wire up.
+services:
+  - type: web
+    name: jvanderz-scrum-poker
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: >-
+      npm --prefix client ci --include=dev &&
+      npm --prefix client run build:deploy &&
+      npm --prefix server ci --omit=dev
+    startCommand: npm --prefix server start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

@@ -63,7 +63,9 @@ export class RoomService {
     if (this.socket) this.socket.disconnect();
     this.error.set(null);
 
-    const socket = io(API_BASE, { transports: ['websocket'] });
+    // API_BASE is '' in a same-origin (combined) deploy; socket.io needs an
+    // explicit URL, so fall back to the page's own origin.
+    const socket = io(API_BASE || window.location.origin, { transports: ['websocket'] });
     this.socket = socket;
 
     socket.on('connect', () => {

@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const { v4: uuid } = require('uuid');
 
@@ -117,6 +119,19 @@ app.get('/api/rooms/:id', (req, res) => {
   if (!room) return res.status(404).json({ error: 'Room not found' });
   res.json(publicRoomState(room));
 });
+
+// In a combined deploy the built Angular app ships alongside this server, so
+// serve it from the same origin (no CORS, deep links fall back to index.html).
+// When it isn't present — plain `npm run dev` — this block is simply skipped.
+const CLIENT_DIR = path.join(__dirname, '..', 'client', 'dist', 'scrum-poker-client', 'browser');
+if (fs.existsSync(path.join(CLIENT_DIR, 'index.html'))) {
+  app.use(express.static(CLIENT_DIR));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) return next();
+    res.sendFile(path.join(CLIENT_DIR, 'index.html'));
+  });
+  console.log(`Serving client from ${CLIENT_DIR}`);
+}
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: CLIENT_ORIGIN } });
