@@ -18,7 +18,7 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // sweep hourly
 const PARTICIPANT_GRACE_MS = Number(process.env.PARTICIPANT_GRACE_MS) || 5 * 60 * 1000;
 const PARTICIPANT_SWEEP_INTERVAL_MS = Math.min(30 * 1000, PARTICIPANT_GRACE_MS);
 
-const DECK = ['0', '1', '2', '3', '5', '8', '13', '21', '34', '?', '☕'];
+const DECK = ['0', '0.5', '1', '2', '3', '5', '8', '13', '21', '34', '?', '☕'];
 
 /**
  * In-memory room store. Nothing here is persisted to disk — restarting the
