@@ -13,6 +13,11 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:4200';
 const ROOM_TTL_MS = 60 * 24 * 60 * 60 * 1000; // ~2 months
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // sweep hourly
 
+// A seat that's been offline this long is dropped from the room. Long enough to
+// survive a refresh, a dropped wifi, or a laptop lid during a short break.
+const PARTICIPANT_GRACE_MS = Number(process.env.PARTICIPANT_GRACE_MS) || 5 * 60 * 1000;
+const PARTICIPANT_SWEEP_INTERVAL_MS = Math.min(30 * 1000, PARTICIPANT_GRACE_MS);
+
 const DECK = ['0', '1', '2', '3', '5', '8', '13', '21', '34', '?', '☕'];
 
 /**
@@ -106,7 +111,16 @@ app.post('/api/rooms', (req, res) => {
     createdAt: Date.now(),
     lastActivity: Date.now(),
     participants: new Map([
-      [creatorId, { id: creatorId, name: creatorName, estimate: null, connected: false }],
+      [
+        creatorId,
+        {
+          id: creatorId,
+          name: creatorName,
+          estimate: null,
+          connected: false,
+          disconnectedAt: Date.now(),
+        },
+      ],
     ]),
   };
   rooms.set(id, room);
@@ -191,13 +205,15 @@ io.on('connection', (socket) => {
     broadcastState(io, room);
   });
 
-  // Start a fresh round: hide estimates again and clear every vote.
+  // Start a fresh round: hide estimates again, clear every vote, and drop any
+  // seats that have gone stale since last round.
   socket.on('room:reset', ({ roomId, clientId }) => {
     const room = rooms.get(roomId);
     if (!room || room.creatorId !== clientId) return;
 
     room.revealed = false;
     for (const p of room.participants.values()) p.estimate = null;
+    sweepRoom(room);
     touch(room);
     broadcastState(io, room);
   });
@@ -207,11 +223,37 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room) return;
     const participant = room.participants.get(clientId);
-    if (participant) participant.connected = false;
+    if (participant) {
+      participant.connected = false;
+      participant.disconnectedAt = Date.now();
+    }
     touch(room);
     broadcastState(io, room);
   });
 });
+
+// Drop seats in one room that have stayed offline past the grace period. A
+// reconnect (room:join) rebuilds the participant without disconnectedAt, so an
+// active member is never swept. Returns true if anything was removed.
+function sweepRoom(room) {
+  const now = Date.now();
+  let removed = false;
+  for (const [id, p] of room.participants) {
+    if (!p.connected && p.disconnectedAt && now - p.disconnectedAt > PARTICIPANT_GRACE_MS) {
+      room.participants.delete(id);
+      removed = true;
+    }
+  }
+  return removed;
+}
+
+// Periodic sweep across every room, so ghosts clear even in an idle room.
+function sweepAllRooms() {
+  for (const room of rooms.values()) {
+    if (sweepRoom(room)) broadcastState(io, room);
+  }
+}
+setInterval(sweepAllRooms, PARTICIPANT_SWEEP_INTERVAL_MS).unref();
 
 server.listen(PORT, () => {
   console.log(`Scrum poker server listening on :${PORT}`);
